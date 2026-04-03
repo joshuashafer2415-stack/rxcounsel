@@ -24,10 +24,15 @@ export default function SearchBar() {
     }
 
     setLoading(true)
-    const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`)
-    const data = await res.json()
-    setResults(data.results || [])
-    setLoading(false)
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`)
+      const data = await res.json()
+      setResults(data.results || [])
+    } catch {
+      setResults([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleSelect(slug: string) {
