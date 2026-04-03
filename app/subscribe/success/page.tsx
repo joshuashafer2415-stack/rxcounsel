@@ -1,8 +1,9 @@
 'use client'
+import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function SubscribeSuccessPage() {
+function SuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnSlug = searchParams.get('slug')
@@ -66,5 +67,13 @@ export default function SubscribeSuccessPage() {
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{message}</h1>
       </div>
     </main>
+  )
+}
+
+export default function SubscribeSuccessPage() {
+  return (
+    <Suspense>
+      <SuccessContent />
+    </Suspense>
   )
 }
