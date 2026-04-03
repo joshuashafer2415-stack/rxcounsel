@@ -4,8 +4,8 @@ import { db } from '@/lib/db'
 export async function GET(req: NextRequest) {
   const query = req.nextUrl.searchParams.get('q')
 
-  if (!query || query.trim().length === 0) {
-    return NextResponse.json({ error: 'Query required' }, { status: 400 })
+  if (!query || query.trim().length < 2) {
+    return NextResponse.json({ error: 'Query must be at least 2 characters' }, { status: 400 })
   }
 
   const term = query.trim()
