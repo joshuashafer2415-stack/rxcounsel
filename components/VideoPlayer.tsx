@@ -4,9 +4,10 @@ import MuxPlayer from '@mux/mux-player-react'
 interface VideoPlayerProps {
   playbackId: string | null
   title: string
+  playbackToken?: string
 }
 
-export default function VideoPlayer({ playbackId, title }: VideoPlayerProps) {
+export default function VideoPlayer({ playbackId, title, playbackToken }: VideoPlayerProps) {
   if (!playbackId) {
     return (
       <div className="aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center">
@@ -19,6 +20,7 @@ export default function VideoPlayer({ playbackId, title }: VideoPlayerProps) {
     <div className="rounded-xl overflow-hidden">
       <MuxPlayer
         playbackId={playbackId}
+        tokens={playbackToken ? { playback: playbackToken } : undefined}
         metadata={{ video_title: title }}
         autoPlay="muted"
         muted
