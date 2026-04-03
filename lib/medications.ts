@@ -6,6 +6,7 @@ export async function getMedication(slug: string): Promise<Medication | null> {
     .from('medications')
     .select('*')
     .eq('slug', slug)
+    .eq('published', true)
     .single()
 
   if (error || !data) return null
