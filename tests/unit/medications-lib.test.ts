@@ -1,40 +1,49 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@/lib/db', () => ({
-  db: {
-    from: vi.fn((table: string) => ({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      order: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue({
-        data: [
-          {
-            id: '1',
-            slug: 'lisinopril',
-            generic_name: 'Lisinopril',
-            brand_names: ['zestril', 'prinivil'],
-            drug_class: 'ACE Inhibitor',
-            published: true,
-            created_at: '2026-01-01',
-          },
-        ],
-        error: null,
-      }),
-      single: vi.fn().mockResolvedValue({
-        data: {
-          id: '1',
-          slug: 'lisinopril',
-          generic_name: 'Lisinopril',
-          brand_names: ['zestril', 'prinivil'],
-          drug_class: 'ACE Inhibitor',
-          published: true,
-          created_at: '2026-01-01',
-        },
-        error: null,
-      }),
-    })),
-  },
-}))
+const knownBrandSlugs = ['zestril', 'prinivil']
+const lisinoprilMed = {
+  id: '1',
+  slug: 'lisinopril',
+  generic_name: 'Lisinopril',
+  brand_names: ['zestril', 'prinivil'],
+  drug_class: 'ACE Inhibitor',
+  published: true,
+  created_at: '2026-01-01',
+}
+
+vi.mock('@/lib/db', () => {
+  let lastContainsArg: string[] = []
+  return {
+    db: {
+      from: vi.fn((table: string) => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        contains: vi.fn().mockImplementation((_col: string, val: string[]) => {
+          lastContainsArg = val
+          return {
+            limit: vi.fn().mockReturnThis(),
+            single: vi.fn().mockImplementation(() => {
+              const slug = lastContainsArg[0]
+              if (knownBrandSlugs.includes(slug)) {
+                return Promise.resolve({ data: lisinoprilMed, error: null })
+              }
+              return Promise.resolve({ data: null, error: { message: 'not found' } })
+            }),
+          }
+        }),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({
+          data: [lisinoprilMed],
+          error: null,
+        }),
+        single: vi.fn().mockResolvedValue({
+          data: lisinoprilMed,
+          error: null,
+        }),
+      })),
+    },
+  }
+})
 
 describe('getMedication', () => {
   it('returns a medication by slug', async () => {

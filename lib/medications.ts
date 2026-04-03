@@ -21,14 +21,12 @@ export async function getMedicationByBrandSlug(brandSlug: string): Promise<Medic
     .from('medications')
     .select('*')
     .eq('published', true)
-    .limit(1000)
+    .contains('brand_names', [brandSlug.toLowerCase()])
+    .limit(1)
+    .single()
 
   if (error || !data) return null
-
-  const match = (data as Medication[]).find(med =>
-    med.brand_names.some(b => b.toLowerCase() === brandSlug.toLowerCase())
-  )
-  return match ?? null
+  return data as Medication
 }
 
 export async function getMedicationVideos(medicationId: string): Promise<Video[]> {
