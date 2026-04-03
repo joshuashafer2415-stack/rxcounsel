@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { MedicationType } from '@/lib/types'
 
 const VIDEO_LABELS: Record<Exclude<MedicationType, 'core'>, { title: string; description: string }> = {
@@ -16,7 +15,12 @@ const VIDEO_LABELS: Record<Exclude<MedicationType, 'core'>, { title: string; des
   },
 }
 
-export default function LockedVideoCard({ type }: { type: Exclude<MedicationType, 'core'> }) {
+interface Props {
+  type: Exclude<MedicationType, 'core'>
+  action?: React.ReactNode
+}
+
+export default function LockedVideoCard({ type, action }: Props) {
   const { title, description } = VIDEO_LABELS[type]
 
   return (
@@ -28,12 +32,7 @@ export default function LockedVideoCard({ type }: { type: Exclude<MedicationType
         <p className="font-semibold text-gray-900 dark:text-gray-100">{title}</p>
         <p className="text-sm text-gray-500 mt-0.5">{description}</p>
       </div>
-      <Link
-        href="/signup"
-        className="text-sm font-semibold text-indigo-600 hover:underline flex-shrink-0"
-      >
-        Unlock
-      </Link>
+      {action && <div className="flex-shrink-0">{action}</div>}
     </div>
   )
 }
