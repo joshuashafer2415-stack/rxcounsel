@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { MedicationType } from '@/lib/types'
 
 const VIDEO_LABELS: Record<Exclude<MedicationType, 'core'>, { title: string; description: string }> = {
@@ -27,12 +28,12 @@ export default function LockedVideoCard({ type }: { type: Exclude<MedicationType
         <p className="font-semibold text-gray-900 dark:text-gray-100">{title}</p>
         <p className="text-sm text-gray-500 mt-0.5">{description}</p>
       </div>
-      <a
+      <Link
         href="/signup"
         className="text-sm font-semibold text-indigo-600 hover:underline flex-shrink-0"
       >
         Unlock
-      </a>
+      </Link>
     </div>
   )
 }
