@@ -9,15 +9,18 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { scriptId } = body as { scriptId: string }
+  const { scriptId, content } = body as { scriptId: string; content?: string }
 
   if (!scriptId) {
     return NextResponse.json({ error: 'scriptId is required' }, { status: 400 })
   }
 
+  const updateFields: Record<string, unknown> = { status: 'approved', reviewed_at: new Date().toISOString() }
+  if (content !== undefined) updateFields.content = content
+
   const { data, error } = await db
     .from('scripts')
-    .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+    .update(updateFields)
     .eq('id', scriptId)
     .select()
     .single()

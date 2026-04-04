@@ -24,6 +24,8 @@ export default function ScriptsSection({ medicationId, scriptsByType, videoTypes
   const [errors, setErrors] = useState<Partial<Record<MedicationType, string>>>({})
   const [localScripts, setLocalScripts] =
     useState<Record<MedicationType, Script | undefined>>(scriptsByType)
+  const [editedContent, setEditedContent] =
+    useState<Partial<Record<MedicationType, string>>>({})
 
   async function handleGenerate(type: MedicationType) {
     setGeneratingType(type)
@@ -62,7 +64,7 @@ export default function ScriptsSection({ medicationId, scriptsByType, videoTypes
       const res = await fetch('/api/admin/scripts/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId: script.id }),
+        body: JSON.stringify({ scriptId: script.id, content: editedContent[type] }),
       })
 
       const data = await res.json()
@@ -125,10 +127,10 @@ export default function ScriptsSection({ medicationId, scriptsByType, videoTypes
 
               {script?.content ? (
                 <textarea
-                  defaultValue={script.content}
+                  value={editedContent[type] ?? script.content}
+                  onChange={(e) => setEditedContent((prev) => ({ ...prev, [type]: e.target.value }))}
                   rows={8}
                   className="w-full border border-gray-200 rounded px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                  readOnly
                 />
               ) : (
                 <p className="text-gray-400 text-sm italic">
