@@ -81,10 +81,8 @@ export default async function MedicationPage({ params }: Props) {
 
   // Check subscription by querying DB directly — never rely on cached JWT token
   let isSubscribed = false
-  console.log('[MED PAGE] session.user.id:', session?.user?.id)
   if (session?.user?.id) {
     isSubscribed = await checkSubscription(session.user.id)
-    console.log('[MED PAGE] isSubscribed:', isSubscribed)
   }
 
   // Generate Mux signed tokens for subscribed users
