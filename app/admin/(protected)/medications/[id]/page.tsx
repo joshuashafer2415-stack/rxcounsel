@@ -73,6 +73,7 @@ export default async function MedicationDetailPage({
         medicationId={medication.id}
         videosByType={videosByType}
         videoTypes={VIDEO_TYPES}
+        scriptsByType={scriptsByType}
       />
     </div>
   )

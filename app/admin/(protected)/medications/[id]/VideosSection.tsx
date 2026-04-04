@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Video, MedicationType } from '@/lib/types'
+import { Video, Script, MedicationType } from '@/lib/types'
 
 const TYPE_LABELS: Record<MedicationType, string> = {
   core: 'Core (Free)',
@@ -15,7 +15,15 @@ interface Props {
   medicationId: string
   videosByType: Record<MedicationType, Video | undefined>
   videoTypes: MedicationType[]
+  scriptsByType: Record<MedicationType, Script | undefined>
 }
+
+type HeyGenState =
+  | { phase: 'idle' }
+  | { phase: 'generating' }
+  | { phase: 'importing' }
+  | { phase: 'done' }
+  | { phase: 'error'; message: string }
 
 function getVideoStatus(video: Video | undefined): string {
   if (!video) return 'No video'
@@ -24,7 +32,12 @@ function getVideoStatus(video: Video | undefined): string {
   return 'Uploading'
 }
 
-export default function VideosSection({ medicationId, videosByType, videoTypes }: Props) {
+export default function VideosSection({
+  medicationId,
+  videosByType,
+  videoTypes,
+  scriptsByType,
+}: Props) {
   const router = useRouter()
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [uploadingType, setUploadingType] = useState<MedicationType | null>(null)
@@ -34,6 +47,14 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
   const [uploadIds, setUploadIds] = useState<Partial<Record<MedicationType, string>>>({})
   const [localVideos, setLocalVideos] =
     useState<Record<MedicationType, Video | undefined>>(videosByType)
+  const [heygenStates, setHeygenStates] = useState<
+    Partial<Record<MedicationType, HeyGenState>>
+  >({})
+
+  // Returns true if any HeyGen generation is currently in progress
+  const anyHeygenInProgress = Object.values(heygenStates).some(
+    (s) => s?.phase === 'generating' || s?.phase === 'importing'
+  )
 
   async function handleFileSelected(type: MedicationType, file: File) {
     setUploadingType(type)
@@ -126,6 +147,103 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
     }
   }
 
+  async function handleHeyGenGenerate(type: MedicationType) {
+    const script = scriptsByType[type]
+    if (!script?.content) return
+
+    setHeygenStates((prev) => ({ ...prev, [type]: { phase: 'generating' } }))
+    setErrors((prev) => ({ ...prev, [type]: undefined }))
+
+    try {
+      // Step 1: Kick off HeyGen video generation
+      const genRes = await fetch('/api/admin/videos/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medicationId, type, scriptContent: script.content }),
+      })
+      const genData = await genRes.json()
+
+      if (!genRes.ok) {
+        setHeygenStates((prev) => ({
+          ...prev,
+          [type]: { phase: 'error', message: genData.error || 'Generation failed' },
+        }))
+        return
+      }
+
+      const { videoId } = genData
+
+      // Step 2: Poll for completion every 5 seconds
+      let videoUrl: string | null = null
+      for (let attempt = 0; attempt < 72; attempt++) {
+        // max ~6 minutes
+        await new Promise((r) => setTimeout(r, 5000))
+
+        const statusRes = await fetch(
+          `/api/admin/videos/heygen-status?videoId=${encodeURIComponent(videoId)}`
+        )
+        const statusData = await statusRes.json()
+
+        if (!statusRes.ok) {
+          setHeygenStates((prev) => ({
+            ...prev,
+            [type]: { phase: 'error', message: statusData.error || 'Status check failed' },
+          }))
+          return
+        }
+
+        if (statusData.status === 'completed' && statusData.videoUrl) {
+          videoUrl = statusData.videoUrl
+          break
+        }
+
+        if (statusData.status === 'failed') {
+          setHeygenStates((prev) => ({
+            ...prev,
+            [type]: { phase: 'error', message: 'HeyGen video generation failed' },
+          }))
+          return
+        }
+      }
+
+      if (!videoUrl) {
+        setHeygenStates((prev) => ({
+          ...prev,
+          [type]: { phase: 'error', message: 'Timed out waiting for HeyGen to complete' },
+        }))
+        return
+      }
+
+      // Step 3: Import the completed video into Mux
+      setHeygenStates((prev) => ({ ...prev, [type]: { phase: 'importing' } }))
+
+      const importRes = await fetch('/api/admin/videos/import-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medicationId, type, videoUrl }),
+      })
+      const importData = await importRes.json()
+
+      if (!importRes.ok) {
+        setHeygenStates((prev) => ({
+          ...prev,
+          [type]: { phase: 'error', message: importData.error || 'Import to Mux failed' },
+        }))
+        return
+      }
+
+      // Success — update local video state
+      setLocalVideos((prev) => ({ ...prev, [type]: importData }))
+      setHeygenStates((prev) => ({ ...prev, [type]: { phase: 'done' } }))
+      router.refresh()
+    } catch (err: any) {
+      setHeygenStates((prev) => ({
+        ...prev,
+        [type]: { phase: 'error', message: err.message || 'Unexpected error' },
+      }))
+    }
+  }
+
   return (
     <section className="bg-white rounded-lg shadow p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-6">Videos</h2>
@@ -138,6 +256,12 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
           const isConfirming = confirmingType === type
           const pendingUploadId = uploadIds[type]
           const progress = uploadProgress[type]
+          const heygenState = heygenStates[type] ?? { phase: 'idle' }
+          const script = scriptsByType[type]
+          const hasApprovedScript = script?.status === 'approved' && !!script?.content
+          const heygenBusy =
+            heygenState.phase === 'generating' || heygenState.phase === 'importing'
+          const anyBusy = uploadingType !== null || anyHeygenInProgress
 
           return (
             <div key={type} className="border border-gray-200 rounded-lg p-4">
@@ -165,7 +289,7 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
                   </p>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
                   {pendingUploadId && (
                     <button
                       onClick={() => handleConfirm(type)}
@@ -175,13 +299,39 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
                       {isConfirming ? 'Confirming...' : 'Confirm Upload'}
                     </button>
                   )}
-                  <label className={`bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 cursor-pointer ${uploadingType !== null ? 'opacity-50 pointer-events-none' : ''}`}>
-                    {isUploading ? `Uploading ${progress ?? 0}%...` : video ? 'Replace Video' : 'Upload Video'}
+
+                  {/* HeyGen Generate button — only shown when there is an approved script */}
+                  {hasApprovedScript && (
+                    <button
+                      onClick={() => handleHeyGenGenerate(type)}
+                      disabled={anyBusy}
+                      className="bg-violet-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {heygenBusy
+                        ? heygenState.phase === 'importing'
+                          ? 'Importing to Mux...'
+                          : 'Generating...'
+                        : video
+                        ? 'Regenerate with HeyGen'
+                        : 'Generate with HeyGen'}
+                    </button>
+                  )}
+
+                  <label
+                    className={`bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 cursor-pointer ${
+                      anyBusy ? 'opacity-50 pointer-events-none' : ''
+                    }`}
+                  >
+                    {isUploading
+                      ? `Uploading ${progress ?? 0}%...`
+                      : video
+                      ? 'Replace Video'
+                      : 'Upload Video'}
                     <input
                       type="file"
                       accept="video/*"
                       className="hidden"
-                      disabled={uploadingType !== null}
+                      disabled={anyBusy}
                       onChange={(e) => {
                         const file = e.target.files?.[0]
                         if (file) handleFileSelected(type, file)
@@ -202,6 +352,30 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Uploading to Mux... {progress}%</p>
                 </div>
+              )}
+
+              {heygenState.phase === 'generating' && (
+                <p className="text-violet-600 text-sm mt-2">
+                  Generating avatar video... (this takes 2-5 minutes)
+                </p>
+              )}
+
+              {heygenState.phase === 'importing' && (
+                <p className="text-violet-600 text-sm mt-2">
+                  Importing completed video to Mux...
+                </p>
+              )}
+
+              {heygenState.phase === 'done' && (
+                <p className="text-green-600 text-sm mt-2 font-medium">
+                  HeyGen video imported successfully.
+                </p>
+              )}
+
+              {heygenState.phase === 'error' && (
+                <p className="text-red-600 text-sm mt-2">
+                  HeyGen error: {heygenState.message}
+                </p>
               )}
 
               {pendingUploadId && !isUploading && !errors[type] && (
