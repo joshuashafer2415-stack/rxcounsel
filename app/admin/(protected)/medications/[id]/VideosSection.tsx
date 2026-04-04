@@ -26,7 +26,7 @@ function getVideoStatus(video: Video | undefined): string {
 
 export default function VideosSection({ medicationId, videosByType, videoTypes }: Props) {
   const router = useRouter()
-  const fileInputRefs = useRef<Partial<Record<MedicationType, HTMLInputElement | null>>>({})
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [uploadingType, setUploadingType] = useState<MedicationType | null>(null)
   const [uploadProgress, setUploadProgress] = useState<Partial<Record<MedicationType, number>>>({})
   const [confirmingType, setConfirmingType] = useState<MedicationType | null>(null)
@@ -175,24 +175,20 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
                       {isConfirming ? 'Confirming...' : 'Confirm Upload'}
                     </button>
                   )}
-                  <button
-                    onClick={() => fileInputRefs.current[type]?.click()}
-                    disabled={isUploading !== false && uploadingType !== null}
-                    className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-                  >
+                  <label className={`bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 cursor-pointer ${uploadingType !== null ? 'opacity-50 pointer-events-none' : ''}`}>
                     {isUploading ? `Uploading ${progress ?? 0}%...` : video ? 'Replace Video' : 'Upload Video'}
-                  </button>
-                  <input
-                    ref={(el) => { fileInputRefs.current[type] = el }}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleFileSelected(type, file)
-                      e.target.value = ''
-                    }}
-                  />
+                    <input
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      disabled={uploadingType !== null}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleFileSelected(type, file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
 
