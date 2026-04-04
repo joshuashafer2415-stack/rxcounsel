@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Video, MedicationType } from '@/lib/types'
 
@@ -26,15 +26,18 @@ function getVideoStatus(video: Video | undefined): string {
 
 export default function VideosSection({ medicationId, videosByType, videoTypes }: Props) {
   const router = useRouter()
+  const fileInputRefs = useRef<Partial<Record<MedicationType, HTMLInputElement | null>>>({})
   const [uploadingType, setUploadingType] = useState<MedicationType | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<Partial<Record<MedicationType, number>>>({})
   const [confirmingType, setConfirmingType] = useState<MedicationType | null>(null)
   const [errors, setErrors] = useState<Partial<Record<MedicationType, string>>>({})
   const [uploadIds, setUploadIds] = useState<Partial<Record<MedicationType, string>>>({})
   const [localVideos, setLocalVideos] =
     useState<Record<MedicationType, Video | undefined>>(videosByType)
 
-  async function handleUpload(type: MedicationType) {
+  async function handleFileSelected(type: MedicationType, file: File) {
     setUploadingType(type)
+    setUploadProgress((prev) => ({ ...prev, [type]: 0 }))
     setErrors((prev) => ({ ...prev, [type]: undefined }))
 
     try {
@@ -49,13 +52,32 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
         return
       }
 
-      // Store the uploadId so we can confirm later
-      setUploadIds((prev) => ({ ...prev, [type]: data.uploadId }))
+      const { uploadUrl, uploadId } = data
 
-      // Open the upload URL in a new tab — the user uploads the file there
-      window.open(data.uploadUrl, '_blank')
-    } catch {
-      setErrors((prev) => ({ ...prev, [type]: 'Something went wrong' }))
+      // Upload the file directly to Mux via PUT
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', uploadUrl)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress((prev) => ({
+              ...prev,
+              [type]: Math.round((e.loaded / e.total) * 100),
+            }))
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`Upload failed: ${xhr.status}`))
+        }
+        xhr.onerror = () => reject(new Error('Upload failed'))
+        xhr.send(file)
+      })
+
+      setUploadProgress((prev) => ({ ...prev, [type]: 100 }))
+      setUploadIds((prev) => ({ ...prev, [type]: uploadId }))
+    } catch (err: any) {
+      setErrors((prev) => ({ ...prev, [type]: err.message || 'Upload failed' }))
     } finally {
       setUploadingType(null)
     }
@@ -64,10 +86,7 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
   async function handleConfirm(type: MedicationType) {
     const uploadId = uploadIds[type]
     if (!uploadId) {
-      setErrors((prev) => ({
-        ...prev,
-        [type]: 'No pending upload found. Click Upload first.',
-      }))
+      setErrors((prev) => ({ ...prev, [type]: 'No pending upload. Upload a file first.' }))
       return
     }
 
@@ -86,7 +105,7 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
       if (res.status === 202) {
         setErrors((prev) => ({
           ...prev,
-          [type]: 'Upload still processing — wait a moment and try again.',
+          [type]: 'Still processing — wait a moment and try Confirm again.',
         }))
         return
       }
@@ -98,6 +117,7 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
 
       setLocalVideos((prev) => ({ ...prev, [type]: data }))
       setUploadIds((prev) => ({ ...prev, [type]: undefined }))
+      setUploadProgress((prev) => ({ ...prev, [type]: undefined }))
       router.refresh()
     } catch {
       setErrors((prev) => ({ ...prev, [type]: 'Something went wrong' }))
@@ -117,6 +137,7 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
           const isUploading = uploadingType === type
           const isConfirming = confirmingType === type
           const pendingUploadId = uploadIds[type]
+          const progress = uploadProgress[type]
 
           return (
             <div key={type} className="border border-gray-200 rounded-lg p-4">
@@ -155,23 +176,46 @@ export default function VideosSection({ medicationId, videosByType, videoTypes }
                     </button>
                   )}
                   <button
-                    onClick={() => handleUpload(type)}
-                    disabled={isUploading}
+                    onClick={() => fileInputRefs.current[type]?.click()}
+                    disabled={isUploading !== false && uploadingType !== null}
                     className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {isUploading ? 'Getting URL...' : video ? 'Replace Video' : 'Upload Video'}
+                    {isUploading ? `Uploading ${progress ?? 0}%...` : video ? 'Replace Video' : 'Upload Video'}
                   </button>
+                  <input
+                    ref={(el) => { fileInputRefs.current[type] = el }}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleFileSelected(type, file)
+                      e.target.value = ''
+                    }}
+                  />
                 </div>
               </div>
 
-              {errors[type] && (
-                <p className="text-red-600 text-sm mt-2">{errors[type]}</p>
+              {isUploading && progress !== undefined && (
+                <div className="mt-3">
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-indigo-600 h-2 rounded-full transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Uploading to Mux... {progress}%</p>
+                </div>
               )}
 
-              {pendingUploadId && !errors[type] && (
+              {pendingUploadId && !isUploading && !errors[type] && (
                 <p className="text-blue-600 text-sm mt-2">
-                  Upload URL opened in new tab. After uploading your file, click &quot;Confirm Upload&quot;.
+                  Upload complete. Click &quot;Confirm Upload&quot; to save.
                 </p>
+              )}
+
+              {errors[type] && (
+                <p className="text-red-600 text-sm mt-2">{errors[type]}</p>
               )}
             </div>
           )
