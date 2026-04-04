@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
             voice: {
               type: 'text',
               input_text: scriptContent,
-              voice_id: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+              voice_id: 'bcdcc5866ae94539b1a8101508552b98',
             },
           },
         ],
